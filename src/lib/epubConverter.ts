@@ -1,5 +1,6 @@
 
 import mammoth from 'mammoth';
+import JSZip from 'jszip';
 
 interface Chapter {
   title: string;
@@ -86,19 +87,23 @@ async function createEpubContent(chapters: Chapter[], fileName: string, coverIma
   const bookTitle = fileName.replace('.docx', '');
   const author = 'Necunoscut';
   
-  // Creează fișierele EPUB
-  const files: { [key: string]: string | Uint8Array } = {};
+  // Creează un nou ZIP
+  const zip = new JSZip();
   
-  // mimetype
-  files['mimetype'] = 'application/epub+zip';
+  // mimetype (trebuie să fie primul fișier, necomprimat)
+  zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
   
   // META-INF/container.xml
-  files['META-INF/container.xml'] = `<?xml version="1.0" encoding="UTF-8"?>
+  zip.folder('META-INF')?.file('container.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
   </rootfiles>
-</container>`;
+</container>`);
+
+  // Creează folderul OEBPS
+  const oebps = zip.folder('OEBPS');
+  if (!oebps) throw new Error('Nu s-a putut crea folderul OEBPS');
 
   // OEBPS/content.opf
   let manifest = '';
@@ -110,13 +115,15 @@ async function createEpubContent(chapters: Chapter[], fileName: string, coverIma
     const coverExt = coverImage.name.split('.').pop()?.toLowerCase() || 'jpg';
     const mimeType = coverExt === 'png' ? 'image/png' : 'image/jpeg';
     
-    files[`OEBPS/images/cover.${coverExt}`] = new Uint8Array(coverBuffer);
+    const imagesFolder = oebps.folder('images');
+    imagesFolder?.file(`cover.${coverExt}`, coverBuffer);
+    
     manifest += `    <item id="cover-image" href="images/cover.${coverExt}" media-type="${mimeType}"/>\n`;
     manifest += `    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>\n`;
     spine += `    <itemref idref="cover"/>\n`;
     
     // Creează pagina de copertă
-    files['OEBPS/cover.xhtml'] = `<?xml version="1.0" encoding="UTF-8"?>
+    oebps.file('cover.xhtml', `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -129,7 +136,7 @@ async function createEpubContent(chapters: Chapter[], fileName: string, coverIma
 <body>
   <img src="images/cover.${coverExt}" alt="Copertă"/>
 </body>
-</html>`;
+</html>`);
   }
   
   // Adaugă cuprinsul
@@ -142,7 +149,7 @@ async function createEpubContent(chapters: Chapter[], fileName: string, coverIma
     spine += `    <itemref idref="${chapter.id}"/>\n`;
   });
   
-  files['OEBPS/content.opf'] = `<?xml version="1.0" encoding="UTF-8"?>
+  oebps.file('content.opf', `<?xml version="1.0" encoding="UTF-8"?>
 <package version="3.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="uid">${Date.now()}</dc:identifier>
@@ -156,7 +163,7 @@ async function createEpubContent(chapters: Chapter[], fileName: string, coverIma
 ${manifest}  </manifest>
   <spine toc="ncx">
 ${spine}  </spine>
-</package>`;
+</package>`);
 
   // Creează cuprinsul (toc.xhtml)
   let tocContent = '';
@@ -164,7 +171,7 @@ ${spine}  </spine>
     tocContent += `    <li><a href="${chapter.id}.xhtml">${chapter.title}</a></li>\n`;
   });
   
-  files['OEBPS/toc.xhtml'] = `<?xml version="1.0" encoding="UTF-8"?>
+  oebps.file('toc.xhtml', `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -183,7 +190,7 @@ ${spine}  </spine>
   <ul>
 ${tocContent}  </ul>
 </body>
-</html>`;
+</html>`);
 
   // Creează toc.ncx
   let ncxContent = '';
@@ -194,7 +201,7 @@ ${tocContent}  </ul>
     </navPoint>\n`;
   });
   
-  files['OEBPS/toc.ncx'] = `<?xml version="1.0" encoding="UTF-8"?>
+  oebps.file('toc.ncx', `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <head>
@@ -206,11 +213,11 @@ ${tocContent}  </ul>
   <docTitle><text>${bookTitle}</text></docTitle>
   <navMap>
 ${ncxContent}  </navMap>
-</ncx>`;
+</ncx>`);
 
   // Creează fișierele capitolelor
   chapters.forEach((chapter) => {
-    files[`OEBPS/${chapter.id}.xhtml`] = `<?xml version="1.0" encoding="UTF-8"?>
+    oebps.file(`${chapter.id}.xhtml`, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -224,37 +231,18 @@ ${ncxContent}  </navMap>
 <body>
   ${chapter.content}
 </body>
-</html>`;
+</html>`);
   });
 
-  // Creează arhiva ZIP
-  const zipBuffer = await createZip(files);
+  // Generează fișierul ZIP
+  console.log('Generez fișierul EPUB final...');
+  const zipBuffer = await zip.generateAsync({ 
+    type: 'arraybuffer',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 9 }
+  });
+  
   console.log('EPUB creat cu succes, dimensiune:', zipBuffer.byteLength, 'bytes');
   
   return zipBuffer;
-}
-
-async function createZip(files: { [key: string]: string | Uint8Array }): Promise<ArrayBuffer> {
-  // Implementare simplă de ZIP pentru EPUB
-  // În practică, ar trebui să folosim o bibliotecă precum JSZip
-  // Dar pentru demonstrație, vom crea un ZIP basic
-  
-  const encoder = new TextEncoder();
-  const fileEntries: Array<{ name: string; data: Uint8Array }> = [];
-  
-  // Convertește toate fișierele în Uint8Array
-  for (const [fileName, content] of Object.entries(files)) {
-    const data = typeof content === 'string' ? encoder.encode(content) : content;
-    fileEntries.push({ name: fileName, data });
-  }
-  
-  // Pentru demonstrație, returnăm un buffer care conține textul JSON
-  // În realitate, aici ar trebui să creăm un ZIP real
-  const mockEpubData = JSON.stringify({
-    files: Object.keys(files),
-    totalSize: fileEntries.reduce((sum, entry) => sum + entry.data.length, 0),
-    content: 'EPUB generat cu succes'
-  });
-  
-  return encoder.encode(mockEpubData).buffer;
 }
