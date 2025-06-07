@@ -42,38 +42,93 @@ function extractChapters(htmlContent: string): Chapter[] {
   const doc = parser.parseFromString(htmlContent, 'text/html');
   
   const chapters: Chapter[] = [];
-  const headings = doc.querySelectorAll('h1, h2, h3');
   
-  if (headings.length === 0) {
-    // Dacă nu există headings, creează un singur capitol cu tot conținutul
+  // Căutăm toate elementele care conțin "Capitolul" sau sunt headings
+  const allElements = doc.querySelectorAll('*');
+  const chapterElements: Element[] = [];
+  
+  allElements.forEach(element => {
+    const text = element.textContent?.trim() || '';
+    // Detectează "Capitolul" urmat de număr
+    if (text.match(/^Capitolul\s+\d+/i) || 
+        text.match(/^Capitol\s+\d+/i) ||
+        (element.tagName.match(/^H[1-6]$/) && text.length > 0)) {
+      chapterElements.push(element);
+    }
+  });
+  
+  console.log('Elemente capitole găsite:', chapterElements.length);
+  
+  if (chapterElements.length === 0) {
+    // Dacă nu găsim capitole, încercăm să împărțim după paragrafe care încep cu "Capitolul"
+    const paragraphs = doc.querySelectorAll('p');
+    paragraphs.forEach(p => {
+      const text = p.textContent?.trim() || '';
+      if (text.match(/^Capitolul\s+\d+/i) || text.match(/^Capitol\s+\d+/i)) {
+        chapterElements.push(p);
+      }
+    });
+  }
+  
+  if (chapterElements.length === 0) {
+    // Dacă tot nu găsim capitole, creează un singur capitol cu tot conținutul
     chapters.push({
-      title: 'Capitol 1',
+      title: 'Document complet',
       content: htmlContent,
       id: 'chapter-1'
     });
     return chapters;
   }
 
-  headings.forEach((heading, index) => {
-    const chapterTitle = heading.textContent?.trim() || `Capitol ${index + 1}`;
+  chapterElements.forEach((chapterElement, index) => {
+    const chapterTitle = chapterElement.textContent?.trim() || `Capitol ${index + 1}`;
     const chapterId = `chapter-${index + 1}`;
     
-    // Găsește conținutul dintre acest heading și următorul
-    let content = '';
-    let currentElement = heading.nextElementSibling;
-    const nextHeading = headings[index + 1];
+    console.log(`Procesez capitolul: ${chapterTitle}`);
     
-    while (currentElement && currentElement !== nextHeading) {
-      content += currentElement.outerHTML || '';
+    // Găsește conținutul dintre acest capitol și următorul
+    let content = '';
+    let currentElement: Element | null = chapterElement;
+    const nextChapterElement = chapterElements[index + 1];
+    
+    // Includem elementul curent (titlul capitolului)
+    content += currentElement.outerHTML;
+    
+    // Parcurge următoarele elemente până la următorul capitol
+    currentElement = currentElement.nextElementSibling;
+    
+    while (currentElement && currentElement !== nextChapterElement) {
+      // Verifică dacă elementul curent nu este începutul unui alt capitol
+      const elementText = currentElement.textContent?.trim() || '';
+      if (!elementText.match(/^Capitolul\s+\d+/i) && !elementText.match(/^Capitol\s+\d+/i)) {
+        content += currentElement.outerHTML;
+      } else {
+        break;
+      }
       currentElement = currentElement.nextElementSibling;
     }
     
-    // Includem și heading-ul în conținut
-    content = heading.outerHTML + content;
+    // Dacă nu am găsit conținut după titlu, încearcă să găsești în parent
+    if (content === chapterElement.outerHTML) {
+      let parent = chapterElement.parentElement;
+      while (parent && parent !== doc.body) {
+        let sibling = parent.nextElementSibling;
+        while (sibling && sibling !== nextChapterElement?.parentElement) {
+          const siblingText = sibling.textContent?.trim() || '';
+          if (!siblingText.match(/^Capitolul\s+\d+/i) && !siblingText.match(/^Capitol\s+\d+/i)) {
+            content += sibling.outerHTML;
+          } else {
+            break;
+          }
+          sibling = sibling.nextElementSibling;
+        }
+        break;
+      }
+    }
     
     chapters.push({
       title: chapterTitle,
-      content: content || '<p>Conținut gol</p>',
+      content: content || '<p>Conținut nedisponibil</p>',
       id: chapterId
     });
   });
