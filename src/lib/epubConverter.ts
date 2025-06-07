@@ -43,7 +43,7 @@ function extractChapters(htmlContent: string): Chapter[] {
   
   const chapters: Chapter[] = [];
   
-  // Căutăm toate elementele care conțin "Capitolul" sau sunt headings
+  // Căutăm toate elementele care conțin "Capitolul", "Glosar", "Epilog" sau sunt headings
   const allElements = doc.querySelectorAll('*');
   const chapterElements: Element[] = [];
   
@@ -52,6 +52,12 @@ function extractChapters(htmlContent: string): Chapter[] {
     // Detectează "Capitolul" urmat de număr
     if (text.match(/^Capitolul\s+\d+/i) || 
         text.match(/^Capitol\s+\d+/i) ||
+        text.match(/^Glosar\s*(de\s*termeni)?/i) ||
+        text.match(/^Epilog/i) ||
+        text.match(/^Prefață/i) ||
+        text.match(/^Introducere/i) ||
+        text.match(/^Concluzii/i) ||
+        text.match(/^Bibliografie/i) ||
         (element.tagName.match(/^H[1-6]$/) && text.length > 0)) {
       chapterElements.push(element);
     }
@@ -60,11 +66,18 @@ function extractChapters(htmlContent: string): Chapter[] {
   console.log('Elemente capitole găsite:', chapterElements.length);
   
   if (chapterElements.length === 0) {
-    // Dacă nu găsim capitole, încercăm să împărțim după paragrafe care încep cu "Capitolul"
-    const paragraphs = doc.querySelectorAll('p');
+    // Dacă nu găsim capitole, încercăm să împărțim după paragrafe care încep cu textele căutate
+    const paragraphs = doc.querySelectorAll('p, div');
     paragraphs.forEach(p => {
       const text = p.textContent?.trim() || '';
-      if (text.match(/^Capitolul\s+\d+/i) || text.match(/^Capitol\s+\d+/i)) {
+      if (text.match(/^Capitolul\s+\d+/i) || 
+          text.match(/^Capitol\s+\d+/i) ||
+          text.match(/^Glosar\s*(de\s*termeni)?/i) ||
+          text.match(/^Epilog/i) ||
+          text.match(/^Prefață/i) ||
+          text.match(/^Introducere/i) ||
+          text.match(/^Concluzii/i) ||
+          text.match(/^Bibliografie/i)) {
         chapterElements.push(p);
       }
     });
@@ -100,7 +113,14 @@ function extractChapters(htmlContent: string): Chapter[] {
     while (currentElement && currentElement !== nextChapterElement) {
       // Verifică dacă elementul curent nu este începutul unui alt capitol
       const elementText = currentElement.textContent?.trim() || '';
-      if (!elementText.match(/^Capitolul\s+\d+/i) && !elementText.match(/^Capitol\s+\d+/i)) {
+      if (!elementText.match(/^Capitolul\s+\d+/i) && 
+          !elementText.match(/^Capitol\s+\d+/i) &&
+          !elementText.match(/^Glosar\s*(de\s*termeni)?/i) &&
+          !elementText.match(/^Epilog/i) &&
+          !elementText.match(/^Prefață/i) &&
+          !elementText.match(/^Introducere/i) &&
+          !elementText.match(/^Concluzii/i) &&
+          !elementText.match(/^Bibliografie/i)) {
         content += currentElement.outerHTML;
       } else {
         break;
@@ -115,7 +135,14 @@ function extractChapters(htmlContent: string): Chapter[] {
         let sibling = parent.nextElementSibling;
         while (sibling && sibling !== nextChapterElement?.parentElement) {
           const siblingText = sibling.textContent?.trim() || '';
-          if (!siblingText.match(/^Capitolul\s+\d+/i) && !siblingText.match(/^Capitol\s+\d+/i)) {
+          if (!siblingText.match(/^Capitolul\s+\d+/i) && 
+              !siblingText.match(/^Capitol\s+\d+/i) &&
+              !siblingText.match(/^Glosar\s*(de\s*termeni)?/i) &&
+              !siblingText.match(/^Epilog/i) &&
+              !siblingText.match(/^Prefață/i) &&
+              !siblingText.match(/^Introducere/i) &&
+              !siblingText.match(/^Concluzii/i) &&
+              !siblingText.match(/^Bibliografie/i)) {
             content += sibling.outerHTML;
           } else {
             break;
