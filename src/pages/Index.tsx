@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookOpen, FileText, Image, Download } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { convertDocxToEpub } from '@/lib/epubConverter';
 
 interface UploadedFiles {
   docx: File | null;
@@ -52,24 +53,28 @@ const Index = () => {
     setCurrentStep('processing');
 
     try {
-      // Simulăm procesarea conversiei
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log('Începe conversia pentru:', files.docx.name);
       
-      // În realitate, aici ar fi logica de conversie DOCX -> EPUB
-      const mockEpubContent = new Blob(['Mock EPUB content'], { type: 'application/epub+zip' });
-      setEpubBlob(mockEpubContent);
+      const epubBuffer = await convertDocxToEpub(files.docx, files.cover);
+      const epubBlob = new Blob([epubBuffer], { type: 'application/epub+zip' });
+      
+      console.log('EPUB generat cu succes, dimensiune:', epubBlob.size, 'bytes');
+      
+      setEpubBlob(epubBlob);
       setCurrentStep('completed');
       
       toast({
         title: "Conversie completă!",
-        description: "Fișierul EPUB a fost generat cu succes.",
+        description: `Fișierul EPUB a fost generat cu succes (${(epubBlob.size / 1024).toFixed(1)} KB).`,
       });
     } catch (error) {
+      console.error('Eroare la conversie:', error);
       toast({
         title: "Eroare la conversie",
-        description: "A apărut o eroare în timpul conversiei.",
+        description: error instanceof Error ? error.message : "A apărut o eroare în timpul conversiei.",
         variant: "destructive",
       });
+      setCurrentStep('upload');
     } finally {
       setIsProcessing(false);
     }
